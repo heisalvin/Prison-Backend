@@ -38,11 +38,15 @@ app = FastAPI(
 )
 
 # ─── CORS ───────────────────────────────────────────────────────────────────────
+origins = [
+    "http://localhost:3000",   # React/Next dev server
+    "http://localhost:5173",   # Vite dev server
+    "https://prison-dashboard-1ovo.vercel.app",  # ✅ your deployed frontend
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
