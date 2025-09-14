@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Path, F
 from typing import List, Optional
 from datetime import datetime
 
-from app.db.mongo import inmates_col  # pymongo.Collection
+from app.db.mongo import inmates_col
 from app.routes.auth import get_current_officer
 from app.utils.face_tools import get_embedding, ALLOWED_EXT
 from app.models.inmate import InmateOut
@@ -12,6 +12,9 @@ MAX_IMAGES = 5
 
 
 def format_inmate(doc: dict) -> dict:
+    """
+    Formats a MongoDB inmate document for JSON output.
+    """
     return {
         "id": str(doc["_id"]),
         "inmate_id": doc["inmate_id"],
@@ -37,12 +40,14 @@ async def create_inmate(
     images: List[UploadFile] = File(..., description="1–5 face images"),
     officer=Depends(get_current_officer),
 ):
-    # ✅ Check for duplicate inmate_id
-    existing = inmates_col.find_one({"inmate_id": inmate_id})
-    if existing:
+    """
+    Create a new inmate with optional extra_info and face embeddings.
+    """
+    # Check for duplicate inmate_id
+    if inmates_col.find_one({"inmate_id": inmate_id}):
         raise HTTPException(status_code=400, detail="Inmate ID already exists")
 
-    # Ensure age is int if provided
+    # Validate age
     if age is not None:
         try:
             age = int(age)
@@ -59,6 +64,7 @@ async def create_inmate(
         "sex": sex
     }
 
+    # Validate number of images
     if not (1 <= len(images) <= MAX_IMAGES):
         raise HTTPException(400, "Upload between 1 and 5 images")
 
@@ -95,11 +101,17 @@ async def create_inmate(
 
 @router.get("/", response_model=List[InmateOut])
 def list_inmates(officer=Depends(get_current_officer)):
+    """
+    List all inmates.
+    """
     return [format_inmate(doc) for doc in inmates_col.find({})]
 
 
 @router.get("/{inmate_id}", response_model=InmateOut)
 def get_inmate(inmate_id: str = Path(...), officer=Depends(get_current_officer)):
+    """
+    Get a single inmate by inmate_id.
+    """
     doc = inmates_col.find_one({"inmate_id": inmate_id})
     if not doc:
         raise HTTPException(404, "Inmate not found")
@@ -119,12 +131,15 @@ async def update_inmate(
     sex: Optional[str] = Form(None, description="Sex of inmate (male or female)"),
     officer=Depends(get_current_officer)
 ):
+    """
+    Update inmate fields. Supports partial updates for name and extra_info.
+    """
     update_data = {}
 
     if name is not None:
         update_data["name"] = name
 
-    # ✅ Dot notation updates for extra_info
+    # Dot notation for extra_info
     if cell is not None:
         update_data["extra_info.cell"] = cell
     if crime is not None:
@@ -133,7 +148,7 @@ async def update_inmate(
         update_data["extra_info.sentence"] = sentence
     if age is not None:
         try:
-            update_data["extra_info.age"] = int(age)  # ensure integer
+            update_data["extra_info.age"] = int(age)
         except ValueError:
             raise HTTPException(400, "Age must be an integer")
     if legal_status is not None:
@@ -159,6 +174,9 @@ async def delete_inmate(
     inmate_id: str,
     officer=Depends(get_current_officer),
 ):
+    """
+    Delete an inmate by inmate_id.
+    """
     res = inmates_col.delete_one({"inmate_id": inmate_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Inmate not found")

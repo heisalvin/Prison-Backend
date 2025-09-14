@@ -9,7 +9,7 @@ python-multipart==0.0.9
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 
-numpy==2.3.2
-Pillow==11.3.0
+numpy==1.26.4
+Pillow==10.2.0
 torch==2.2.2
 facenet-pytorch==2.6.0

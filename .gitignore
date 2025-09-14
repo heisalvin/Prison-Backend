@@ -1,6 +1,25 @@
-.env
-
-Face/
-
-.VSCode/
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.env
+venv/
+.venv/
+
+# Logs
+*.log
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Installer scripts
+get-pip.py
+
+# Docker volumes (if you store data locally)
+data/

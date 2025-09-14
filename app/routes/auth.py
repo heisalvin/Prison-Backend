@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, Form, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, HTTPException, Depends, Form, status, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.models.officer import OfficerIn, OfficerOut
 from app.db.mongo import officers_col
 from passlib.context import CryptContext
@@ -17,7 +17,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # ─── SECURITY UTILS ────────────────────────────────────────────────────────────
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+bearer_scheme = HTTPBearer(auto_error=True)
 
 router = APIRouter(tags=["auth"])
 
@@ -41,24 +41,24 @@ def create_token(data: dict, expires_delta: timedelta):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # ─── DEPENDENCIES ──────────────────────────────────────────────────────────────
-async def get_current_officer(token: str = Depends(oauth2_scheme)):
+async def get_current_officer(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     """Validate JWT for normal API requests"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    token = creds.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         officer_id: str = payload.get("sub")
         if officer_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
+            raise ValueError("Missing officer ID in token")
+    except (JWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     officer = officers_col.find_one({"_id": ObjectId(officer_id)})
     if officer is None:
-        raise credentials_exception
+        raise HTTPException(status_code=404, detail="Officer not found")
     return officer
 
 async def get_ws_current_officer(token: str):
@@ -82,7 +82,7 @@ async def register_officer(officer: OfficerIn):
         raise HTTPException(status_code=400, detail="This email is not allowed to register")
 
     if officers_col.find_one({"email": officer.email}):
-        raise HTTPException(400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail="Email already registered")
 
     hashed = hash_pwd(officer.password)
     doc = {**officer.dict(), "password": hashed, "created_at": datetime.utcnow()}
