@@ -50,7 +50,6 @@ app.add_middleware(
         "http://localhost:3000",
         "https://prison-dashboard-1ovo.vercel.app"
     ],
-    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
