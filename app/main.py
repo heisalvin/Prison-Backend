@@ -38,18 +38,21 @@ app = FastAPI(
 )
 
 # ─── CORS ───────────────────────────────────────────────────────────────────────
-origins = [
-    "http://localhost:3000",   # React/Next dev server
-    "http://localhost:5173",   # Vite dev server
-    "https://prison-dashboard-1ovo.vercel.app",  # ✅ your deployed frontend
-]
+origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+
+if not origins or origins == [""]:
+    # ✅ fallback to safe defaults (local + Vercel deployment)
+    origins = [
+        "http://localhost:3000",   # React/Next dev server
+        "http://localhost:5173",   # Vite dev server
+        "https://prison-dashboard-nmll.vercel.app",  # your deployed frontend
+    ]
+
+print("🌍 Allowed CORS origins:", origins)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://prison-dashboard-1ovo.vercel.app"
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
