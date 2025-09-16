@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any, List
 from io import BytesIO
 import base64
 from PIL import Image, ImageDraw
+import time
 
 from app.db.mongo import inmates_col, logs_col
 from app.routes.auth import get_current_officer
@@ -65,6 +66,10 @@ router = APIRouter(prefix="/recognize", tags=["recognize"])
 
 COSINE_THRESHOLD = 0.85
 EUCLIDEAN_THRESHOLD = 0.6
+RECOGNITION_COOLDOWN = 30  # seconds
+
+# In-memory cache of last recognition times per inmate_id
+last_recognized: Dict[str, float] = {}
 
 
 @router.post("/", description="Identify the inmate in the uploaded image with bounding boxes")
@@ -84,7 +89,7 @@ async def recognize_face(
         if boxes is None or len(boxes) == 0:
             raise HTTPException(400, "No face detected")
 
-        # Use first face for recognition (like before)
+        # Use first face for recognition
         try:
             query_vec = get_embedding(content)
             query_vec = np.asarray(query_vec, dtype=np.float32)
@@ -139,32 +144,41 @@ async def recognize_face(
         recognized_by = officer_id if isinstance(officer_id, ObjectId) else ObjectId(str(officer_id))
 
         if chosen_doc:
-            # Log recognition
-            log_doc = {
-                "inmate_id": chosen_doc["inmate_id"],
-                "inmate_name": chosen_doc.get("name"),
-                "prison_name": chosen_doc.get("prison_name"),
-                "score": float(reported_score),
-                "image": image.filename,
-                "recognized_by": recognized_by,
-                "recognized_at": datetime.utcnow(),
-            }
-            logs_col.insert_one(log_doc)
+            inmate_id = chosen_doc["inmate_id"]
+            now = time.time()
+            last_seen = last_recognized.get(inmate_id, 0)
 
-            # Broadcast event
-            try:
-                payload = {
-                    "inmate_id": chosen_doc["inmate_id"],
+            if now - last_seen >= RECOGNITION_COOLDOWN:
+                last_recognized[inmate_id] = now
+
+                # Log recognition
+                log_doc = {
+                    "inmate_id": inmate_id,
                     "inmate_name": chosen_doc.get("name"),
                     "prison_name": chosen_doc.get("prison_name"),
-                    "officer_name": officer.get("name") if isinstance(officer, dict) else getattr(officer, "name", None),
                     "score": float(reported_score),
-                    "method": method,
-                    "recognized_at": log_doc["recognized_at"].isoformat()
+                    "image": image.filename,
+                    "recognized_by": recognized_by,
+                    "recognized_at": datetime.utcnow(),
                 }
-                await broadcast_activity(payload)
-            except Exception:
-                pass
+                logs_col.insert_one(log_doc)
+
+                # Broadcast event
+                try:
+                    payload = {
+                        "inmate_id": inmate_id,
+                        "inmate_name": chosen_doc.get("name"),
+                        "prison_name": chosen_doc.get("prison_name"),
+                        "officer_name": officer.get("name") if isinstance(officer, dict) else getattr(officer, "name", None),
+                        "score": float(reported_score),
+                        "method": method,
+                        "recognized_at": log_doc["recognized_at"].isoformat()
+                    }
+                    await broadcast_activity(payload)
+                except Exception:
+                    pass
+            else:
+                print(f"Skipped logging {inmate_id} (recognized too recently)")
 
         # Build boxes array for frontend
         boxes_list: List[Dict[str, Any]] = []
